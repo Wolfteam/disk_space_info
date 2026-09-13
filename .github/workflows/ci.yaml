@@ -27,13 +27,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
 
-      - run: dart pub get
+      # --no-example: `dart pub get` also resolves ./example, which is a Flutter
+      # app and cannot resolve under a bare Dart SDK ("the Flutter SDK is not
+      # available"). The example is analysed by its own job below.
+      - run: dart pub get --no-example
 
+      # Scoped to the package's own code: example/ is a Flutter app that this
+      # job deliberately does not resolve, so analysing it here would fail on an
+      # unresolved package:flutter. The example job below covers it.
       - name: Verify formatting
-        run: dart format --output=none --set-exit-if-changed .
+        run: dart format --output=none --set-exit-if-changed lib test tool
 
       - name: Analyze
-        run: dart analyze --fatal-infos
+        run: dart analyze --fatal-infos lib test tool
 
       - name: Test
         run: dart test
@@ -62,6 +68,10 @@ jobs:
           channel: stable
 
       - run: flutter pub get
+        working-directory: example
+
+      - name: Verify example formatting
+        run: dart format --output=none --set-exit-if-changed .
         working-directory: example
 
       - name: Analyze example
@@ -159,8 +169,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
-      - run: dart pub downgrade
-      - run: dart analyze --fatal-infos
+      - run: dart pub downgrade --no-example
+      - run: dart analyze --fatal-infos lib test tool
 
   # pub.dev scoring gate: dartdoc coverage, example presence, platform support,
   # and packaging validity.
@@ -169,8 +179,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dart-lang/setup-dart@v1
+      # Flutter rather than bare Dart: pana inspects example/, which is a Flutter
+      # app. Flutter bundles the Dart SDK, so `dart` still works here.
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
       - run: dart pub global activate pana
-      - run: dart pub get
+      - run: flutter pub get
       - name: Report package score
         run: dart pub global run pana --no-warning --exit-code-threshold 20 .
