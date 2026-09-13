@@ -1,0 +1,11 @@
+include: package:flutter_lints/flutter.yaml
+
+# Matches the package's own formatter settings so `dart format` from the repo
+# root does not fight `flutter analyze` from inside example/.
+formatter:
+  page_width: 130
+  trailing_commas: preserve
+
+linter:
+  rules:
+    - prefer_single_quotes
