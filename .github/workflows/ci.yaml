@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Runs the real syscalls on every OS and architecture whose struct layout we
+  # ship. This matrix is the primary guard against a wrong byte offset: the unit
+  # tests prove the decoding maths, check_layout proves the offsets match the
+  # system headers, and these legs prove the whole chain against a live
+  # filesystem.
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest # glibc  x86_64 -> statvfs LP64
+          - os: ubuntu-24.04-arm # glibc  arm64  -> statvfs LP64
+          - os: macos-latest # Darwin arm64  -> statfs
+          - os: macos-15-intel # Darwin x86_64 -> statfs
+          - os: windows-latest # Win    x86_64 -> GetDiskFreeSpaceExW
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+
+      - run: dart pub get
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze
+        run: dart analyze --fatal-infos
+
+      - name: Test
+        run: dart test
+
+      # POSIX only: compiles tool/layout_probe.c and asserts the offsets in
+      # platform_layout.dart still match the system headers. Windows decodes no
+      # struct, so there is nothing to check there.
+      - name: Verify struct layout against system headers
+        if: runner.os != 'Windows'
+        run: dart run tool/check_layout.dart
+
+  # The example is a Flutter app, so it needs the Flutter toolchain rather than
+  # the bare Dart SDK, and `flutter pub get` must run before analysis can
+  # resolve package:flutter.
+  example:
+    name: example (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+        working-directory: example
+
+      - name: Analyze example
+        run: flutter analyze
+        working-directory: example
+
+  # Desktop integration tests exercise the package through a real Flutter app.
+  # Cheap enough to run on every PR, unlike the mobile legs below.
+  integration-desktop:
+    name: integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            device: macos
+          - os: windows-latest
+            device: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+        working-directory: example
+
+      - run: flutter test integration_test -d ${{ matrix.device }}
+        working-directory: example
+
+  # Emulator and simulator runs are slow and flaky, so they are gated to main
+  # rather than sitting on the PR path.
+  integration-android:
+    name: integration (android)
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+        working-directory: example
+
+      - name: Run integration tests on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          working-directory: example
+          script: flutter test integration_test -d emulator-5554
+
+  integration-ios:
+    name: integration (ios)
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+        working-directory: example
+
+      - name: Boot a simulator and run integration tests
+        working-directory: example
+        run: |
+          simulator=$(xcrun simctl list devices available -j \
+            | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print([x['udid'] for v in d.values() for x in v if 'iPhone' in x['name']][0])")
+          xcrun simctl boot "$simulator" || true
+          flutter test integration_test -d "$simulator"
+
+  # Lower-bound check: verifies lib/ still compiles against the oldest dependency
+  # versions our constraints allow, catching a lower bound that is too loose.
+  #
+  # Deliberately runs `analyze` but NOT `test`. `dart pub downgrade` also
+  # downgrades dev-only transitives, and package:test's minimum
+  # frontend_server_client (3.2.0) looks for `frontend_server.dart.snapshot`,
+  # which modern SDKs ship as `frontend_server_aot.dart.snapshot` — so the test
+  # runner cannot start. That is a dev-tooling incompatibility we cannot express
+  # in our constraints, and it says nothing about this package.
+  #
+  # `analyze` is the meaningful half anyway: `ffi` is the only runtime
+  # dependency, so it is the only lower bound a consumer can be affected by.
+  downgrade:
+    name: lower-bound dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - run: dart pub downgrade
+      - run: dart analyze --fatal-infos
+
+  # pub.dev scoring gate: dartdoc coverage, example presence, platform support,
+  # and packaging validity.
+  score:
+    name: pana score
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - run: dart pub global activate pana
+      - run: dart pub get
+      - name: Report package score
+        run: dart pub global run pana --no-warning --exit-code-threshold 20 .
