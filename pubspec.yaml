@@ -1,0 +1,22 @@
+name: disk_space_info
+description: >-
+  Free, total and used disk space for any path, on Android, iOS, macOS, Windows
+  and Linux. Pure Dart via dart:ffi, with no native build configuration.
+version: 0.1.0
+repository: https://github.com/Wolfteam/disk_space_info
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  ffi: ^2.2.0
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.25.6
+
+topics:
+  - disk
+  - storage
+  - filesystem
+  - ffi

@@ -1,0 +1,21 @@
+# https://dart.dev/tools/private-files
+# Created by `dart pub`
+.dart_tool/
+
+# Avoid committing pubspec.lock for library packages; see
+# https://dart.dev/tools/pub/private-files#pubspec-lock.
+pubspec.lock
+
+# FVM Version Cache (.fvmrc itself is committed)
+.fvm/
+
+# IDE
+.idea/
+*.iml
+
+# Compiled layout probe (tool/layout_probe.c)
+tool/layout_probe
+tool/layout_probe.exe
+
+# Generated API docs
+doc/api/
