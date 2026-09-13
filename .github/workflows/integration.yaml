@@ -1,0 +1,118 @@
+name: Integration
+
+# On demand only. These run the example app on a real device, emulator or
+# simulator, which takes minutes rather than seconds — the Android emulator
+# alone is ~16 min and a wedged iOS simulator can hang until it times out. The
+# CI workflow already exercises the real syscalls on every desktop OS and
+# architecture, so this is extra confidence rather than a gate on every push.
+#
+# Run it from the Actions tab, or:
+#   gh workflow run integration.yaml                        # all of them
+#   gh workflow run integration.yaml -f android=false        # all but Android
+#   gh workflow run integration.yaml -f desktop=false -f ios=false   # Android only
+#
+# Each platform is its own toggle rather than a single choice, so any
+# combination can be run — all of them, or just the one you are debugging.
+on:
+  workflow_dispatch:
+    inputs:
+      desktop:
+        description: Run on macOS and Windows
+        type: boolean
+        default: true
+      android:
+        description: Run on an Android emulator (~16 min)
+        type: boolean
+        default: true
+      ios:
+        description: Run on an iOS simulator
+        type: boolean
+        default: true
+
+jobs:
+  desktop:
+    name: integration (${{ matrix.os }})
+    if: ${{ inputs.desktop }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            device: macos
+          - os: windows-latest
+            device: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+        working-directory: example
+
+      - run: flutter test integration_test -d ${{ matrix.device }}
+        working-directory: example
+
+  android:
+    name: integration (android)
+    if: ${{ inputs.android }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+        working-directory: example
+
+      - name: Run integration tests on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          working-directory: example
+          script: flutter test integration_test -d emulator-5554
+
+  ios:
+    name: integration (ios)
+    if: ${{ inputs.ios }}
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+        working-directory: example
+
+      - name: Boot a simulator and run integration tests
+        working-directory: example
+        run: |
+          set -euo pipefail
+          # Pick the LAST available iPhone, which is the newest runtime: simctl
+          # groups devices by runtime in ascending order. The first entry can be
+          # an old device, and one that never finishes booting hangs the job
+          # instead of failing it.
+          simulator=$(xcrun simctl list devices available \
+            | grep -E 'iPhone' \
+            | tail -1 \
+            | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
+          if [ -z "$simulator" ]; then
+            echo "No available iPhone simulator" >&2
+            exit 1
+          fi
+          echo "Using simulator $simulator"
+          xcrun simctl boot "$simulator" || true
+          # Fail rather than hang if the simulator never becomes responsive.
+          xcrun simctl bootstatus "$simulator" -b || true
+          flutter test integration_test -d "$simulator"

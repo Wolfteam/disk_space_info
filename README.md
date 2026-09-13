@@ -142,8 +142,18 @@ Its integration tests double as the package's on-device verification:
 
 ```bash
 cd example
-flutter test integration_test -d macos
+flutter test integration_test -d macos     # or -d windows, an emulator, a simulator
 ```
+
+In CI these run **on demand**, not on every push — an Android emulator takes ~16 minutes, so gating
+every commit on it is not worth the wait. Trigger them from the Actions tab or with:
+
+```bash
+gh workflow run integration.yaml -f target=all   # or: desktop | android | ios
+```
+
+Every push still runs the unit tests, which exercise the real syscalls on Linux (x64 and arm64),
+macOS (arm64 and x86_64) and Windows.
 
 ## License
 
