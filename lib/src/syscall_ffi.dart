@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import 'disk_space_info_base.dart';
+import 'path_resolver.dart';
 import 'platform_layout.dart';
 import 'record_decoder.dart';
 
@@ -27,12 +28,25 @@ const int _maxPathChars = 261;
 /// libc symbols on Android (dart-lang/sdk#53249).
 DynamicLibrary _openLibc() => Platform.isAndroid ? DynamicLibrary.open('libc.so') : DynamicLibrary.process();
 
-/// Queries the filesystem holding [resolvedDirectory], which must already be an
-/// absolute, existing directory.
+/// Queries the filesystem holding [path].
 ///
-/// Returns `null` for every failure: unsupported platform or architecture,
-/// missing symbol, failing syscall, or an implausible result.
-DiskSpaceInfo? queryNative(String resolvedDirectory) {
+/// [path] is resolved to an absolute, existing directory first (see
+/// [resolveQueryDirectory]), so it need not exist yet.
+///
+/// This is the native half of the conditional import in
+/// `disk_space_info_base.dart`; `syscall_web.dart` is the other half. Path
+/// resolution lives here rather than in the caller because it needs `dart:io`,
+/// which is unavailable on web.
+///
+/// Returns `null` for every failure: an unresolvable path, an unsupported
+/// platform or architecture, a missing symbol, a failing syscall, or an
+/// implausible result.
+DiskSpaceInfo? queryNative(String path) {
+  final String? resolvedDirectory = resolveQueryDirectory(path);
+  if (resolvedDirectory == null) {
+    return null;
+  }
+
   if (Platform.isWindows) {
     return queryWindows(resolvedDirectory);
   }

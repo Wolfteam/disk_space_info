@@ -1,5 +1,4 @@
-import 'path_resolver.dart';
-import 'syscall_ffi.dart';
+import 'syscall_ffi.dart' if (dart.library.js_interop) 'syscall_web.dart';
 
 /// A point-in-time snapshot of the filesystem that contains a given path.
 ///
@@ -99,15 +98,12 @@ class DiskSpaceInfo {
   ///
   /// Throws [ArgumentError] if [path] is empty.
   static DiskSpaceInfo? querySync(String path) {
-    final String? directory = resolveQueryDirectory(path);
-    if (directory == null) {
-      return null;
+    if (path.isEmpty) {
+      throw ArgumentError.value(path, 'path', 'must not be empty');
     }
 
     try {
-      return queryNative(directory);
-    } on ArgumentError {
-      rethrow;
+      return queryNative(path);
     } on Object {
       return null;
     }
