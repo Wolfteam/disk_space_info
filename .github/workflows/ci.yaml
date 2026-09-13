@@ -14,6 +14,7 @@ jobs:
   test:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -57,6 +58,7 @@ jobs:
   example:
     name: example (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -83,6 +85,7 @@ jobs:
   integration-desktop:
     name: integration (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -109,6 +112,7 @@ jobs:
     name: integration (android)
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -134,6 +138,7 @@ jobs:
     name: integration (ios)
     if: github.ref == 'refs/heads/main'
     runs-on: macos-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -146,9 +151,23 @@ jobs:
       - name: Boot a simulator and run integration tests
         working-directory: example
         run: |
-          simulator=$(xcrun simctl list devices available -j \
-            | python3 -c "import json,sys;d=json.load(sys.stdin)['devices'];print([x['udid'] for v in d.values() for x in v if 'iPhone' in x['name']][0])")
+          set -euo pipefail
+          # Pick the LAST available iPhone, which is the newest runtime: simctl
+          # groups devices by runtime in ascending order. The first entry can be
+          # an old device, and one that never finishes booting hangs the job
+          # instead of failing it.
+          simulator=$(xcrun simctl list devices available \
+            | grep -E 'iPhone' \
+            | tail -1 \
+            | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
+          if [ -z "$simulator" ]; then
+            echo "No available iPhone simulator" >&2
+            exit 1
+          fi
+          echo "Using simulator $simulator"
           xcrun simctl boot "$simulator" || true
+          # Fail rather than hang if the simulator never becomes responsive.
+          xcrun simctl bootstatus "$simulator" -b || true
           flutter test integration_test -d "$simulator"
 
   # Lower-bound check: verifies lib/ still compiles against the oldest dependency
@@ -166,6 +185,7 @@ jobs:
   downgrade:
     name: lower-bound dependencies
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
@@ -177,6 +197,7 @@ jobs:
   score:
     name: pana score
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       # Flutter rather than bare Dart: pana inspects example/, which is a Flutter
