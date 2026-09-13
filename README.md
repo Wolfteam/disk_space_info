@@ -112,9 +112,19 @@ Both of these are easy to get wrong, and most implementations do:
 2. **Darwin's `fsblkcnt_t` is a 32-bit `unsigned int`**, so `struct statvfs` block counts silently
    **wrap above 16 TiB** with no error returned.
 
-`statfs` avoids both: 64-bit counts, and `f_bsize` means what it says. A CI job compiles a C probe
-on every run and asserts the offsets in `lib/src/platform_layout.dart` still match the system
-headers, so an OS ABI change fails the build rather than returning a wrong number.
+`statfs` avoids both: 64-bit counts, and `f_bsize` means what it says.
+
+There is a third trap, in the **symbol name**. Darwin renames `statfs` per architecture
+(`sys/cdefs.h`): `__DARWIN_ONLY_64_BIT_INO_T` is 0 on `__x86_64__`, so the 64-bit-inode entry point
+is exported as **`statfs$INODE64`**, while on arm64 the macro is 1 and the symbol is plain
+**`statfs`**. Looking up only `statfs` fails outright on Intel Macs — and plain `statfs` there is the
+*legacy* 32-bit-inode function with a different struct, so resolving it would give wrong numbers
+rather than an error. This package tries `statfs$INODE64` first and falls back to `statfs`.
+
+A CI job compiles a C probe on every run and asserts the offsets in
+`lib/src/platform_layout.dart` still match the system headers, so an OS ABI change fails the build
+rather than returning a wrong number. The matrix runs Darwin on both arm64 and x86_64 — the Intel leg
+is what caught the symbol-suffix bug.
 
 ## Example app
 

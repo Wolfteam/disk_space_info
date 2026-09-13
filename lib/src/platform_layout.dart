@@ -5,7 +5,24 @@
 /// mistake here produces a wrong number, never an out-of-bounds read.
 class FsLayout {
   /// The libc symbol to call, `statfs` on Darwin and `statvfs` elsewhere.
+  ///
+  /// This is the *logical* name, and the one [checkLayout] compares against the
+  /// struct in the system headers. The symbol actually exported by libc may
+  /// differ per architecture — see [lookupSymbols].
   final String symbol;
+
+  /// Symbols to look up, in order of preference, until one resolves.
+  ///
+  /// Darwin renames `statfs` per architecture. From `sys/cdefs.h`:
+  /// `__DARWIN_ONLY_64_BIT_INO_T` is 0 on `__x86_64__`, which makes
+  /// `__DARWIN_SUF_64_BIT_INO_T` expand to `"$INODE64"`, so the 64-bit-inode
+  /// entry point is exported as **`statfs$INODE64`**. On arm64 the macro is 1,
+  /// the suffix is empty, and the symbol is plain **`statfs`**.
+  ///
+  /// The suffixed variant must be preferred: plain `statfs` on x86_64 is the
+  /// *legacy* 32-bit-inode function whose struct has a different layout, so
+  /// resolving it would produce wrong numbers rather than an error.
+  final List<String> lookupSymbols;
 
   /// Bytes to allocate for the result. Deliberately larger than the real
   /// struct so a layout error cannot overrun the buffer.
@@ -31,8 +48,12 @@ class FsLayout {
   final bool countsAre64;
 
   /// Creates a layout description.
+  ///
+  /// [lookupSymbols] defaults to `[symbol]` when the platform exports the
+  /// symbol under its plain name on every architecture.
   const FsLayout({
     required this.symbol,
+    List<String>? lookupSymbols,
     required this.bufferBytes,
     required this.unitOffset,
     required this.unitIs64,
@@ -40,7 +61,14 @@ class FsLayout {
     required this.freeOffset,
     required this.availOffset,
     required this.countsAre64,
-  });
+  }) : lookupSymbols = lookupSymbols ?? const <String>[];
+
+  /// The symbols to try, in order, falling back to [symbol] when no
+  /// architecture-specific aliases are registered.
+  ///
+  /// A getter rather than a constructor default because a `const` initializer
+  /// list cannot reference another field.
+  List<String> get effectiveLookupSymbols => lookupSymbols.isEmpty ? <String>[symbol] : lookupSymbols;
 }
 
 /// Darwin `struct statfs` — macOS and iOS, arm64 and x86_64 alike.
@@ -55,6 +83,10 @@ class FsLayout {
 ///   lives in `f_iosize`, safely out of the way.
 const FsLayout darwinStatfsLayout = FsLayout(
   symbol: 'statfs',
+  // x86_64 exports the 64-bit-inode variant as `statfs$INODE64`; arm64 exports
+  // it as plain `statfs`. Preferring the suffixed name matters: plain `statfs`
+  // on x86_64 is the legacy 32-bit-inode function with a different layout.
+  lookupSymbols: <String>[r'statfs$INODE64', 'statfs'],
   bufferBytes: 2304,
   unitOffset: 0,
   unitIs64: false,

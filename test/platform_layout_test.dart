@@ -15,6 +15,22 @@ void main() {
       expect(darwinStatfsLayout.countsAre64, isTrue);
       expect(darwinStatfsLayout.bufferBytes, greaterThanOrEqualTo(2168));
     });
+
+    test('prefers the INODE64 symbol, which is what x86_64 exports', () {
+      // sys/cdefs.h: __DARWIN_ONLY_64_BIT_INO_T is 0 on __x86_64__, so
+      // __DARWIN_SUF_64_BIT_INO_T expands to "$INODE64"; on arm64 it is 1 and
+      // the suffix is empty. Plain `statfs` on x86_64 is the LEGACY
+      // 32-bit-inode function with a different struct, so order matters —
+      // getting it wrong yields wrong numbers, not an error.
+      expect(darwinStatfsLayout.effectiveLookupSymbols, <String>[r'statfs$INODE64', 'statfs']);
+    });
+  });
+
+  group('effectiveLookupSymbols', () {
+    test('falls back to the plain symbol when no aliases are registered', () {
+      expect(posixStatvfsLp64Layout.effectiveLookupSymbols, <String>['statvfs']);
+      expect(posixStatvfsIlp32Layout.effectiveLookupSymbols, <String>['statvfs']);
+    });
   });
 
   group('posix statvfs LP64 layout', () {

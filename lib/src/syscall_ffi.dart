@@ -53,16 +53,41 @@ DiskSpaceInfo? queryNative(String path) {
   return _queryPosix(resolvedDirectory);
 }
 
+/// Resolves the first of [FsLayout.effectiveLookupSymbols] that libc exports.
+///
+/// Darwin exports the 64-bit-inode `statfs` under different names per
+/// architecture — `statfs$INODE64` on x86_64, plain `statfs` on arm64 — so the
+/// candidates are tried in order rather than assuming one name. Getting this
+/// wrong is not a graceful failure: plain `statfs` on x86_64 is the legacy
+/// 32-bit-inode function, whose struct layout differs from the one decoded
+/// here.
+_PathStatDart? _lookupStat(FsLayout layout) {
+  final DynamicLibrary libc;
+  try {
+    libc = _openLibc();
+  } on Object {
+    return null;
+  }
+
+  for (final String symbol in layout.effectiveLookupSymbols) {
+    try {
+      return libc.lookupFunction<_PathStatNative, _PathStatDart>(symbol);
+    } on Object {
+      // Not exported on this architecture; try the next candidate.
+      continue;
+    }
+  }
+  return null;
+}
+
 DiskSpaceInfo? _queryPosix(String resolvedDirectory) {
   final FsLayout? layout = layoutFor(isDarwin: Platform.isMacOS || Platform.isIOS, pointerSize: sizeOf<IntPtr>());
   if (layout == null) {
     return null;
   }
 
-  final _PathStatDart statCall;
-  try {
-    statCall = _openLibc().lookupFunction<_PathStatNative, _PathStatDart>(layout.symbol);
-  } on Object {
+  final _PathStatDart? statCall = _lookupStat(layout);
+  if (statCall == null) {
     return null;
   }
 
