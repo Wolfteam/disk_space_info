@@ -1,0 +1,24 @@
+name: Publish
+
+# Publishes to pub.dev when a v-prefixed tag is pushed, e.g. v0.1.1.
+#
+# Authentication is OIDC — there is no token to store. pub.dev must be
+# configured to allow it: Admin tab -> Automated publishing -> enable from
+# GitHub Actions, repository `Wolfteam/disk_space_info`, tag pattern
+# `v{{version}}`.
+#
+# The tag MUST match `version:` in pubspec.yaml or pub.dev rejects the publish.
+# To cut a release:
+#   1. bump `version:` in pubspec.yaml
+#   2. add the matching CHANGELOG.md section
+#   3. commit, then: git tag v0.1.1 && git push origin v0.1.1
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+jobs:
+  publish:
+    permissions:
+      id-token: write # required for OIDC authentication against pub.dev
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@v1

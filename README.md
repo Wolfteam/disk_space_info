@@ -1,5 +1,9 @@
 # disk_space_info
 
+[![pub package](https://img.shields.io/pub/v/disk_space_info.svg)](https://pub.dev/packages/disk_space_info)
+[![CI](https://github.com/Wolfteam/disk_space_info/actions/workflows/ci.yaml/badge.svg)](https://github.com/Wolfteam/disk_space_info/actions/workflows/ci.yaml)
+[![pub points](https://img.shields.io/pub/points/disk_space_info)](https://pub.dev/packages/disk_space_info/score)
+
 Free, total and used disk space for **any path**, on Android, iOS, macOS, Windows and Linux.
 
 Pure Dart via `dart:ffi` — **no native build configuration**. There is no `android/`, `ios/`,
@@ -149,11 +153,28 @@ In CI these run **on demand**, not on every push — an Android emulator takes ~
 every commit on it is not worth the wait. Trigger them from the Actions tab or with:
 
 ```bash
-gh workflow run integration.yaml -f target=all   # or: desktop | android | ios
+gh workflow run integration.yaml                                # all platforms
+gh workflow run integration.yaml -f android=false               # all but Android
+gh workflow run integration.yaml -f desktop=false -f ios=false  # Android only
 ```
 
 Every push still runs the unit tests, which exercise the real syscalls on Linux (x64 and arm64),
 macOS (arm64 and x86_64) and Windows.
+
+## Releasing
+
+Publishing is automated: pushing a `v`-prefixed tag triggers
+[`publish.yml`](.github/workflows/publish.yml), which authenticates to pub.dev over OIDC — there is
+no token to store.
+
+1. Bump `version:` in `pubspec.yaml`
+2. Add the matching section to `CHANGELOG.md`
+3. Commit, then tag — **the tag must match the pubspec version** or pub.dev rejects it:
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
 
 ## License
 
