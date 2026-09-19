@@ -50,7 +50,15 @@ jobs:
       # struct, so there is nothing to check there.
       - name: Verify struct layout against system headers
         if: runner.os != 'Windows'
-        run: dart run tool/check_layout.dart
+        run: |
+          set -euo pipefail
+          result=$(dart run tool/check_layout.dart)
+          echo "$result"
+          echo "- ✅ \`${{ matrix.os }}\` — ${result#check_layout: }" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Note Windows result in the summary
+        if: runner.os == 'Windows'
+        run: echo "- ✅ \`${{ matrix.os }}\` — Win32 path, no struct decoding" >> "$env:GITHUB_STEP_SUMMARY"
 
   # The example is a Flutter app, so it needs the Flutter toolchain rather than
   # the bare Dart SDK, and `flutter pub get` must run before analysis can
@@ -117,5 +125,12 @@ jobs:
           channel: stable
       - run: dart pub global activate pana
       - run: flutter pub get
+
+      # Writes the score table to the run summary so it is visible in the UI
+      # rather than buried in this job's log, and fails if more than 20 points
+      # are missing.
       - name: Report package score
-        run: dart pub global run pana --no-warning --exit-code-threshold 20 .
+        run: |
+          set -euo pipefail
+          dart pub global run pana --no-warning --json . > pana.json
+          dart run tool/pana_summary.dart pana.json 20 >> "$GITHUB_STEP_SUMMARY"

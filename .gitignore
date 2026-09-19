@@ -19,3 +19,6 @@ tool/layout_probe.exe
 
 # Generated API docs
 doc/api/
+
+# pana report (CI artifact)
+pana.json
